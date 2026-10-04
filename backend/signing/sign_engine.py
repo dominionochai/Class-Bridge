@@ -34,6 +34,16 @@ _KEYWORDS.sort(key=lambda item: len(item[0]), reverse=True)
 
 
 def translate_segment(text: str) -> dict[str, Any]:
+    from llm_bridge import translate_with_llm
+    llm = translate_with_llm(text)
+    if llm is not None:
+        return {
+            "sign_ids": llm.get("sign_ids", []),
+            "coverage_pct": 100.0 if llm.get("sign_ids") else 0.0,
+            "fallback_reason": None,
+            "captions_only": not llm.get("sign_ids"),
+            "translation": llm.get("translation", text),
+        }
     """Translate known words/phrases and explicitly report vocabulary gaps."""
     tokens = [token.lower() for token in _TOKEN_RE.findall(text or "")]
     if not tokens:
@@ -66,4 +76,3 @@ def translate_segment(text: str) -> dict[str, Any]:
         "fallback_reason": "vocab_gap" if has_gap else None,
         "captions_only": has_gap or not sign_ids,
     }
-
