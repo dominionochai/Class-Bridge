@@ -46,7 +46,12 @@ async def captions(request: Request) -> dict[str, Any]:
         for segment in segments:
             text = str(getattr(segment, "text", "")).strip(); parts.append(text)
             items.append({"start": float(getattr(segment, "start", 0.0)), "end": float(getattr(segment, "end", 0.0)), "text": text})
-        return model_response("model", {"transcript": " ".join(p for p in parts if p).strip(), "language": getattr(info, "language", None), "segments": items}, "POST /api/captions")
+        transcript = " ".join(p for p in parts if p).strip()
+        from llm_bridge import smart_captions_with_gemini
+        smart = smart_captions_with_gemini(transcript)
+        if smart:
+            return model_response("model", {"transcript": smart, "language": getattr(info, "language", None), "segments": items}, "POST /api/captions")
+        return model_response("model", {"transcript": transcript, "language": getattr(info, "language", None), "segments": items}, "POST /api/captions")
     except Exception as exc: return _error(f"faster-whisper inference failed: {_text(exc)}")
     finally:
         if path:
