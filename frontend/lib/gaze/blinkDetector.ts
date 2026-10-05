@@ -15,12 +15,18 @@ export type BlinkState = {
 const LEFT_EYE = [33, 133, 159, 145] as const;
 const RIGHT_EYE = [362, 263, 386, 374] as const;
 
+const MIN_BLINK_DURATION_MS = 120;
+const MAX_BLINK_DURATION_MS = 600;
+
 function distance(a: FacePoint, b: FacePoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 /** Return the eye aspect ratio, or null when this eye is not detectable. */
-function eyeAspectRatio(points: readonly FacePoint[], ids: readonly number[]): number | null {
+function eyeAspectRatio(
+  points: readonly FacePoint[],
+  ids: readonly number[],
+): number | null {
   const [outer, inner, upper, lower] = ids;
   const outerPoint = points[outer];
   const innerPoint = points[inner];
@@ -36,8 +42,8 @@ function eyeAspectRatio(points: readonly FacePoint[], ids: readonly number[]): n
 }
 
 export class BlinkDetector {
-  private closedFrames = 0;
-  private openFrames = 0;
+  private closedAt: number | null = null;
+  private eyeClosed = false;
 
   // These thresholds deliberately add hysteresis so a borderline EAR does not flicker.
   constructor(
@@ -46,11 +52,14 @@ export class BlinkDetector {
   ) {}
 
   reset(): void {
-    this.closedFrames = 0;
-    this.openFrames = 0;
+    this.closedAt = null;
+    this.eyeClosed = false;
   }
 
-  update(points: readonly FacePoint[]): BlinkState {
+  update(
+    points: readonly FacePoint[],
+    timestamp = performance.now(),
+  ): BlinkState {
     const leftEar = eyeAspectRatio(points, LEFT_EYE);
     const rightEar = eyeAspectRatio(points, RIGHT_EYE);
     const availableEars = [leftEar, rightEar].filter(
@@ -60,31 +69,37 @@ export class BlinkDetector {
     // Do not infer a blink from a missing face or unavailable eyes.
     if (availableEars.length === 0) {
       this.reset();
-      return { leftEar: 1, rightEar: 1, ear: 1, isClosed: false, blinked: false };
+      return {
+        leftEar: 1,
+        rightEar: 1,
+        ear: 1,
+        isClosed: false,
+        blinked: false,
+      };
     }
 
-    const ear = availableEars.reduce((sum, value) => sum + value, 0) / availableEars.length;
+    const ear =
+      availableEars.reduce((sum, value) => sum + value, 0) /
+      availableEars.length;
     let blinked = false;
 
-    // Count consecutive closed frames rather than one noisy frame.
-    if (ear < this.closeAt) {
-      this.closedFrames += 1;
-      this.openFrames = 0;
-    // Require consecutive open frames before arming the next blink.
-    } else if (ear > this.openAt) {
-      this.openFrames += 1;
-      this.closedFrames = 0;
+    if (!this.eyeClosed && ear < this.closeAt) {
+      this.eyeClosed = true;
+      this.closedAt = timestamp;
+    } else if (this.eyeClosed && ear > this.openAt) {
+      const closedDuration = timestamp - (this.closedAt ?? timestamp);
+      blinked =
+        closedDuration >= MIN_BLINK_DURATION_MS &&
+        closedDuration <= MAX_BLINK_DURATION_MS;
+      this.eyeClosed = false;
+      this.closedAt = null;
     }
-
-    // A blink is one closed run of at least two frames, followed by an open frame.
-    if (this.openFrames === 1 && this.closedFrames >= 2) blinked = true;
-    if (this.openFrames > 4) this.openFrames = 0;
 
     return {
       leftEar: leftEar ?? 1,
       rightEar: rightEar ?? 1,
       ear,
-      isClosed: ear < this.closeAt,
+      isClosed: this.eyeClosed,
       blinked,
     };
   }
