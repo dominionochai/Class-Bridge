@@ -1,19 +1,33 @@
-IyBWZXJpZmllZCBydW50aW1lIHBhY2thZ2VzCiMgUHl0aG9uIGNvbXBhdGli
-aWxpdHkgbm90ZXM6IHNwZWVjaCBhbmQgbGFuZ3VhZ2UgbW9kZWwgc3VwcG9y
-dCB0YXJnZXRzIFB5dGhvbiAzLjktMy4xMi4KIyBUaGUgdmlzaW9uIHJ1bnRp
-bWUgdXNlcyB2ZXJzaW9ucyB3aXRoIGF2YWlsYWJsZSBXaW5kb3dzIHdoZWVs
-cy4KCiMgU3BlZWNoIGFuZCBsYW5ndWFnZQpmYXN0ZXItd2hpc3Blcj09MS4y
-LjEKc2lnbi1sYW5ndWFnZS10cmFuc2xhdG9yPT0wLjYuMQoKIyBWaXNpb24g
-YW5kIE9DUgojIFZpc2lvbiBydW50aW1lIHJlbGVhc2UgcGlucyBhcmUgaW50
-ZW50aW9uYWxseSBrZXB0IHN0YWJsZS4KbWVkaWFwaXBlCnBhZGRsZW9jcj09
-My43LjAKcGFkZGxlcGFkZGxlPT0zLjMuMQoKIyBBdWRpbyBhbmQgbW9kZWwg
-cnVudGltZXMKc2hlcnBhLW9ubng9PTEuMTMuNgpzaWxlcm8tdmFkPT02LjIu
-MQp0ZW5zb3JmbG93LWh1Yj09MC4xNi4xCnB5dGhvbi1tdWx0aXBhcnQKcGls
-bG93Cm9wZW5jdi1weXRob24taGVhZGxlc3MKbnVtcHkKc291bmRmaWxlCmh1
-Z2dpbmdmYWNlX2h1YgoKIyBWaXNpb24tbGFuZ3VhZ2UgbW9kZWxzCnNhbGVz
-Zm9yY2UtbGF2aXM9PTEuMC4yCgojIHRvcmNoPT0yLjEuMCBhbmQgdG9yY2h2
-aXNpb249PTAuMjguMCB3ZXJlIHJlcG9ydGVkLCBidXQgbm8gY29tcGF0aWJs
-ZQojIFdpbmRvd3MvUHl0aG9uIDMuMTAtMy4xMiBwaW5zIHdlcmUgdmVyaWZp
-ZWQgZm9yIHRoaXMgcmVwb3NpdG9yeSwgc28gdGhleQojIGFyZSBpbnRlbnRp
-b25hbGx5IG9taXR0ZWQgcmF0aGVyIHRoYW4gY2xhaW1pbmcgYW4gdW5zdXBw
-b3J0ZWQgY29tYmluYXRpb24uCmh0cHgK
+# Verified runtime packages
+# Python compatibility notes: speech and language model support targets Python 3.9-3.12.
+# The vision runtime uses versions with available Windows wheels.
+
+# Speech and language
+faster-whisper==1.2.1
+sign-language-translator==0.6.1
+
+# Vision and OCR
+# Vision runtime release pins are intentionally kept stable.
+mediapipe
+paddleocr==3.7.0
+paddlepaddle==3.3.1
+
+# Audio and model runtimes
+sherpa-onnx==1.13.6
+silero-vad==6.2.1
+tensorflow-hub==0.16.1
+python-multipart
+pillow
+opencv-python-headless
+numpy
+soundfile
+huggingface_hub
+
+# Vision-language models
+salesforce-lavis==1.0.2
+
+# torch==2.1.0 and torchvision==0.28.0 were reported, but no compatible
+# Windows/Python 3.10-3.12 pins were verified for this repository, so they
+# are intentionally omitted rather than claiming an unsupported combination.
+
+httpx
