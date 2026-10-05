@@ -7,12 +7,14 @@ export type CalibrationModel = {
   sampleCount: number;
   /** Mean in-sample Euclidean error, retained for API compatibility. */
   error: number;
+  /** Mean in-sample Euclidean error. */
+  fitError: number;
   /** Mean held-out Euclidean error from leave-one-out validation. */
-  validationError?: number;
+  validationError: number;
   /** True when held-out error exceeds the supported calibration threshold. */
-  needsRecalibration?: boolean;
+  needsRecalibration: boolean;
   /** Quality label derived from held-out validation. */
-  quality?: 'good' | 'poor';
+  quality: 'good' | 'poor';
 };
 
 export const CALIBRATION_POINTS: Point[] = [
@@ -24,6 +26,34 @@ export const CALIBRATION_POINTS: Point[] = [
 ];
 
 const VALIDATION_ERROR_THRESHOLD = 0.15;
+const STABLE_WINDOW_SIZE = 10;
+const MAX_STABLE_SPREAD = 0.04;
+const MAX_TARGET_DISTANCE = 0.12;
+
+/**
+ * Return the mean of a full, quiet recent gaze window when it is a fixation on
+ * the requested target. A null result means to keep waiting (including during
+ * transitions/saccades).
+ */
+export function stableFixationMean(
+  recentGaze: readonly Point[],
+  target: Point,
+): Point | null {
+  if (recentGaze.length < STABLE_WINDOW_SIZE) return null;
+  const window = recentGaze.slice(-STABLE_WINDOW_SIZE);
+  const xs = window.map((point) => point.x);
+  const ys = window.map((point) => point.y);
+  const mean = window.reduce(
+    (sum, point) => ({ x: sum.x + point.x / window.length, y: sum.y + point.y / window.length }),
+    { x: 0, y: 0 },
+  );
+  const spreadX = Math.max(...xs) - Math.min(...xs);
+  const spreadY = Math.max(...ys) - Math.min(...ys);
+  if (spreadX >= MAX_STABLE_SPREAD || spreadY >= MAX_STABLE_SPREAD) return null;
+  if (Math.hypot(mean.x - target.x, mean.y - target.y) > MAX_TARGET_DISTANCE) return null;
+  return mean;
+}
+
 type Matrix3 = [[number, number, number], [number, number, number], [number, number, number]];
 type Vector3 = [number, number, number];
 
@@ -75,7 +105,7 @@ function predict(coefficients: Vector3, point: Point): number {
   return coefficients[0] + coefficients[1] * point.x + coefficients[2] * point.y;
 }
 
-function fitError(samples: readonly CalibrationSample[], x: Vector3, y: Vector3): number {
+function measureError(samples: readonly CalibrationSample[], x: Vector3, y: Vector3): number {
   return samples.reduce((total, sample) => {
     const xError = predict(x, sample.gaze) - sample.target.x;
     const yError = predict(y, sample.gaze) - sample.target.y;
@@ -95,10 +125,10 @@ export function fitCalibration(samples: readonly CalibrationSample[]): Calibrati
 
   const x = fitAxis(samples, 'x');
   const y = fitAxis(samples, 'y');
-  const error = fitError(samples, x, y);
+  const fitError = measureError(samples, x, y);
 
-  // Leave each sample out in turn and predict its target using the remaining
-  // observations. This exposes overfit/unstable fits that training error hides.
+  // Leave each sample out in turn and predict its target from the rest. This
+  // exposes overfit/unstable fits that training error alone can hide.
   let validationTotal = 0;
   for (let heldOut = 0; heldOut < samples.length; heldOut += 1) {
     const training = samples.filter((_, index) => index !== heldOut);
@@ -117,7 +147,8 @@ export function fitCalibration(samples: readonly CalibrationSample[]): Calibrati
     x,
     y,
     sampleCount: samples.length,
-    error,
+    error: fitError,
+    fitError,
     validationError,
     needsRecalibration,
     quality: needsRecalibration ? 'poor' : 'good',
