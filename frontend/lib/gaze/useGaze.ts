@@ -171,8 +171,8 @@ export function useGaze(videoRef: RefObject<HTMLVideoElement | null>) {
         if (
           step.current >= 0 &&
           step.current < CALIBRATION_POINTS.length &&
-          performance.now() - startedAt.current >= 1200 &&
-          samples.current.length >= MAX_CALIBRATION_SAMPLES_PER_TARGET
+          (performance.now() - startedAt.current >= 1200 ||
+            samples.current.length >= MAX_CALIBRATION_SAMPLES_PER_TARGET)
         ) {
           if (step.current === CALIBRATION_POINTS.length - 1) {
             try {
