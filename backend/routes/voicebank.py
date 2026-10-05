@@ -1,4 +1,5 @@
-'''Voice-bank enrollment with an honest, audio-free fallback seam.'''
+'''Voice-bank enrollment with an honest,
+audio-free fallback seam.'''
 from __future__ import annotations
 import base64, binascii, json, uuid
 from pathlib import Path
@@ -13,7 +14,7 @@ async def _json(request: Request) -> dict[str, Any] | None:
     try: payload = await request.json()
     except Exception: return None
     return payload if isinstance(payload, dict) else None
-@router.post('/voicebank/enroll')
+@router.post('/voicebank/enroll', response_model=None)
 async def enroll(request: Request) -> dict[str, str] | JSONResponse:
     payload = await _json(request)
     name = payload.get('name', '').strip() if payload else ''
@@ -26,7 +27,7 @@ async def enroll(request: Request) -> dict[str, str] | JSONResponse:
     VOICEBANK_DIR.mkdir(parents=True, exist_ok=True)
     (VOICEBANK_DIR / f'{enrollment_id}.json').write_text(json.dumps({'enrollment_id': enrollment_id, 'name': name, 'sample_bytes': len(sample)}), encoding='utf-8')
     return {'enrollment_id': enrollment_id}
-@router.post('/voicebank/speak')
+@router.post('/voicebank/speak', response_model=None)
 async def speak(request: Request) -> dict[str, str] | JSONResponse:
     payload = await _json(request)
     enrollment_id = payload.get('enrollment_id', '').strip() if payload else ''
@@ -35,7 +36,7 @@ async def speak(request: Request) -> dict[str, str] | JSONResponse:
     if not (VOICEBANK_DIR / f'{enrollment_id}.json').exists(): return _error('enrollment_id was not found', 404)
     # A real voice-clone model (Coqui XTTS) plugs in at this seam; NEVER fake audio.
     return {'text': text, 'enrollment_id': enrollment_id, 'source': 'fallback'}
-@router.get('/voicebank/{enrollment_id}')
+@router.get('/voicebank/{enrollment_id}', response_model=None)
 async def status(enrollment_id: str) -> dict[str, Any] | JSONResponse:
     record = VOICEBANK_DIR / f'{enrollment_id}.json'
     if not record.exists(): return _error('enrollment_id was not found', 404)
