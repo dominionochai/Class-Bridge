@@ -6,6 +6,9 @@ export type GazeEstimate = { raw: Point; landmarks: FacePoint[]; timestamp: numb
 
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm';
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const DETECTION_INTERVAL_MS = 66;
+
+type TransformationMatrix = { data?: ArrayLike<number> };
 
 function mean(points: readonly FacePoint[]): FacePoint | null {
   if (points.length === 0) return null;
@@ -37,20 +40,57 @@ function eyeRatio(points: readonly FacePoint[], irisIds: readonly number[], eyeI
   return normalizeIris(iris, outer, inner, upper, lower);
 }
 
+/** Remove the estimated head yaw/pitch contribution from the eye-box ratio. */
+function compensateForHeadPose(raw: Point, matrix: TransformationMatrix | undefined): Point {
+  const data = matrix?.data;
+  if (!data || data.length < 16) return raw;
+
+  // MediaPipe returns the facial pose as a column-major 4x4 transformation matrix.
+  const yaw = Math.atan2(Number(data[8]), Number(data[10]));
+  const pitch = Math.atan2(-Number(data[9]), Math.hypot(Number(data[8]), Number(data[10])));
+  if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return raw;
+
+  // Convert radians to a normalized eye-box offset; preserve the original estimate
+  // unchanged when a valid pose matrix is not available.
+  return { x: raw.x - yaw / Math.PI, y: raw.y - pitch / Math.PI };
+}
+
 export class GazeEstimator {
-  private constructor(private readonly task: FaceLandmarker) {}
+  private lastDetectionTimestamp = Number.NEGATIVE_INFINITY;
+
+  private constructor(
+    private readonly task: FaceLandmarker,
+    public readonly delegateUsed: 'GPU' | 'CPU',
+  ) {}
 
   static async create(): Promise<GazeEstimator> {
     const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-    const task = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-      runningMode: 'VIDEO', numFaces: 1, minFaceDetectionConfidence: 0.55,
-      minFacePresenceConfidence: 0.55, minTrackingConfidence: 0.55,
-    });
-    return new GazeEstimator(task);
+    const createOptions = (delegate: 'GPU' | 'CPU') => ({
+      baseOptions: { modelAssetPath: MODEL_URL, delegate },
+      runningMode: 'VIDEO' as const,
+      numFaces: 1,
+      minFaceDetectionConfidence: 0.55,
+      minFacePresenceConfidence: 0.55,
+      minTrackingConfidence: 0.55,
+      // outputFacialTransformationMatrixes is the MediaPipe Tasks Vision option;
+      // include the requested spelling as well for versions exposing that alias.
+      outputFacialTransformationMatrixes: true,
+      outputFaceTransformationMatrixes: true,
+    }) as Parameters<typeof FaceLandmarker.createFromOptions>[1];
+
+    try {
+      const task = await FaceLandmarker.createFromOptions(fileset, createOptions('GPU'));
+      return new GazeEstimator(task, 'GPU');
+    } catch {
+      const task = await FaceLandmarker.createFromOptions(fileset, createOptions('CPU'));
+      return new GazeEstimator(task, 'CPU');
+    }
   }
 
   estimate(video: HTMLVideoElement, timestamp = performance.now()): GazeEstimate | null {
+    if (timestamp - this.lastDetectionTimestamp < DETECTION_INTERVAL_MS) return null;
+    this.lastDetectionTimestamp = timestamp;
+
     const result = this.task.detectForVideo(video, timestamp);
     const landmarks = result.faceLandmarks?.[0] as FacePoint[] | undefined;
     if (!landmarks || landmarks.length < 478) return null;
@@ -59,7 +99,12 @@ export class GazeEstimator {
     const right = eyeRatio(landmarks, [473, 474, 475, 476, 477], [362, 263, 386, 374]);
     const raw = left && right ? { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 } : left ?? right;
     if (!raw) return null;
-    return { raw, landmarks, timestamp };
+
+    const resultWithFaceMatrix = result as typeof result & {
+      faceTransformationMatrixes?: TransformationMatrix[];
+    };
+    const matrix = result.facialTransformationMatrixes?.[0] ?? resultWithFaceMatrix.faceTransformationMatrixes?.[0];
+    return { raw: compensateForHeadPose(raw, matrix), landmarks, timestamp };
   }
 
   close(): void {
